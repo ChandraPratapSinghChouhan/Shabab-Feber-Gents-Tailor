@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Tailor Pro Final</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body { font-family: Arial; background:#0f172a; color:white; margin:0; }
+.container { padding:15px; }
+h1 { text-align:center; }
+
+input, button {
+  padding:10px;
+  margin:5px;
+  border-radius:8px;
+  border:none;
+}
+
+input { width:95%; }
+
+button {
+  background:#22c55e;
+  color:white;
+  cursor:pointer;
+}
+
+.table {
+  width:100%;
+  border-collapse: collapse;
+}
+
+.table th, .table td {
+  padding:8px;
+  border-bottom:1px solid #444;
+  text-align:center;
+}
+
+#addForm {
+  display:none;
+  background:#1e293b;
+  padding:10px;
+  border-radius:10px;
+}
+
+.topbar {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:space-between;
+}
+
+.search { width:60%; }
+
+@media(max-width:600px){
+  .search{ width:100%; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Shabab Feber Gents Tailor</h1>
+<h1>Phone - 22431903</h1>
+<h1>9th Commercial Area - Block 5 - Mezzanine - Shop No. 8
+</h1>
+<h4>Total Records: <span id="totalCount">0</span></h4>
+
+<div class="topbar">
+  <input id="searchInput" class="search" placeholder="Search name / mobile / book no">
+
+  <div>
+    <button onclick="showAdd()">➕ Add</button>
+    <button onclick="exportJSON()">💾 Export</button>
+    <input type="file" onchange="importJSON(event)">
+  </div>
+</div>
+
+<div id="addForm">
+  <input id="nameInput" placeholder="Name">
+  <input id="mobileInput" placeholder="Mobile">
+  <input id="serialInput" placeholder="Book No">
+
+  <button onclick="saveRecord()">Save</button>
+  <button onclick="hideAdd()">Cancel</button>
+</div>
+
+<div style="margin:10px 0;">
+  <button onclick="prevPage()">⬅ Prev</button>
+  <span id="pageInfo"></span>
+  <button onclick="nextPage()">Next ➡</button>
+</div>
+
+<table class="table">
+<thead>
+<tr>
+<th>#</th>
+<th>Name</th>
+<th>Mobile</th>
+<th>Book</th>
+<th>Actions</th>
+</tr>
+</thead>
+
+<tbody id="recordsTable"></tbody>
+</table>
+
+</div>
+
+<script>
+
+let data = JSON.parse(localStorage.getItem("tailorData")) || [];
+let filteredData = [...data];
+let editSerial = null;
+
+let currentPage = 1;
+let perPage = 100;
+
+function saveToLocal(){
+  localStorage.setItem("tailorData", JSON.stringify(data));
+}
+
+function importJSON(e){
+  let file = e.target.files[0];
+  let reader = new FileReader();
+
+  reader.onload = function(){
+    data = JSON.parse(reader.result);
+    filteredData = [...data];
+    currentPage = 1;
+    saveToLocal();
+    render(filteredData);
+  };
+
+  reader.readAsText(file);
+}
+
+function exportJSON(){
+  let blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  let a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "backup.json";
+  a.click();
+}
+
+function render(arr){
+
+  let totalPages = Math.max(1, Math.ceil(arr.length / perPage));
+  if(currentPage > totalPages) currentPage = totalPages;
+
+  let start = (currentPage - 1) * perPage;
+  let pageData = arr.slice(start, start + perPage);
+
+  let html = "";
+
+  for(let i=0;i<pageData.length;i++){
+    let r = pageData[i];
+
+    html += `
+    <tr>
+      <td>${start + i + 1}</td>
+      <td>${r.name || ""}</td>
+      <td>${r.mobile || ""}</td>
+      <td>${r.serial || ""}</td>
+      <td>
+        <button onclick="edit('${r.serial}')">✏️</button>
+        <button onclick="del('${r.serial}')">🗑️</button>
+      </td>
+    </tr>`;
+  }
+
+  document.getElementById("recordsTable").innerHTML = html;
+  document.getElementById("totalCount").innerText = arr.length;
+  document.getElementById("pageInfo").innerText =
+    `Page ${currentPage} / ${totalPages}`;
+}
+
+function saveRecord(){
+
+  let name = document.getElementById("nameInput").value.trim();
+  let mobile = document.getElementById("mobileInput").value.trim();
+  let serial = document.getElementById("serialInput").value.trim();
+
+  if(!name || !mobile){
+    alert("Name & Mobile required!");
+    return;
+  }
+
+  let record = { name, mobile, serial };
+
+  if(editSerial){
+    let index = data.findIndex(d => d.serial === editSerial);
+    if(index !== -1) data[index] = record;
+    editSerial = null;
+  } else {
+    if(data.some(d => d.serial === serial)){
+      alert("Book number exists!");
+      return;
+    }
+    data.push(record);
+  }
+
+  saveToLocal();
+
+  filteredData = [...data];
+  currentPage = Math.ceil(filteredData.length / perPage);
+  render(filteredData);
+
+  clearForm();
+  hideAdd();
+}
+
+function edit(serial){
+  let r = data.find(d => d.serial === serial);
+
+  editSerial = serial;
+
+  document.getElementById("nameInput").value = r.name;
+  document.getElementById("mobileInput").value = r.mobile;
+  document.getElementById("serialInput").value = r.serial;
+
+  showAdd();
+}
+
+function del(serial){
+  if(confirm("Delete?")){
+    data = data.filter(d => d.serial !== serial);
+    saveToLocal();
+    filteredData = [...data];
+    currentPage = 1;
+    render(filteredData);
+  }
+}
+
+let timer;
+
+document.getElementById("searchInput").addEventListener("input", function(){
+
+  clearTimeout(timer);
+
+  timer = setTimeout(()=>{
+    let v = this.value.toLowerCase();
+
+    if(!v){
+      filteredData = [...data];
+    } else {
+      filteredData = data.filter(r =>
+        (r.name && r.name.toLowerCase().includes(v)) ||
+        (r.mobile && r.mobile.includes(v)) ||
+        (r.serial && r.serial.includes(v))
+      );
+    }
+
+    currentPage = 1;
+    render(filteredData);
+
+  }, 120);
+});
+
+["nameInput","mobileInput","serialInput"].forEach(id=>{
+  document.getElementById(id).addEventListener("keydown", function(e){
+    if(e.key === "Enter"){
+      e.preventDefault();
+      saveRecord();
+    }
+  });
+});
+
+function nextPage(){
+  currentPage++;
+  render(filteredData);
+}
+
+function prevPage(){
+  if(currentPage > 1){
+    currentPage--;
+    render(filteredData);
+  }
+}
+
+currentPage = 1;
+render(filteredData);
+
+function showAdd(){
+  document.getElementById("addForm").style.display = "block";
+}
+
+function hideAdd(){
+  document.getElementById("addForm").style.display = "none";
+}
+
+function clearForm(){
+  document.getElementById("nameInput").value = "";
+  document.getElementById("mobileInput").value = "";
+  document.getElementById("serialInput").value = "";
+}
+
+</script>
+
+</body>
+</html>
